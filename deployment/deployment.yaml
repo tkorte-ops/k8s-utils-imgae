@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: k8s-utils-pvc
+  namespace: utils
+spec:
+  storageClassName: nfs-01
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: k8s-utils
+  name: k8s-utils
+  namespace: utils
+spec:
+  selector:
+    matchLabels:
+      app: k8s-utils
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: k8s-utils
+    spec:
+      containers:
+      - command:
+        - sleep
+        - infinity
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN", "SYS_TIME"]
+          privileged: true
+        name: k8s-utils
+        image: docker.io/tkay11001/k8s-utils:latest
+        imagePullPolicy: Always
+        volumeMounts:
+          - name: homedir
+            mountPath: /root
+      restartPolicy: "Always"
+      volumes:
+        - name: homedir
+          persistentVolumeClaim:
+            claimName: k8s-utils-pvc
