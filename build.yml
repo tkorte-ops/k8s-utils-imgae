@@ -1,0 +1,64 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - '**' # Entspricht rules: if: '$CI_COMMIT_BRANCH'
+
+env:
+  DOCKER_HUB_REPO: ${{ secrets.DOCKER_HUB_REPO }} # Repository Name (z.B. user/app)
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Set Variables
+        run: |
+          # Kurz-Hash extrahieren (ähnlich CI_COMMIT_SHORT_SHA)
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+          # Branch-Name slugify (ähnlich CI_COMMIT_REF_SLUG)
+          BRANCH_SLUG=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')
+          
+          echo "IMAGE_TAG_COMMIT=${{ env.DOCKER_HUB_REPO }}:$SHA_SHORT" >> $GITHUB_ENV
+          echo "IMAGE_TAG_BRANCH=${{ env.DOCKER_HUB_REPO }}:$BRANCH_SLUG" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+
+      - name: Build and Tag Image
+        run: |
+          echo "Berechneter IMAGE_TAG_COMMIT '$IMAGE_TAG_COMMIT'"
+          echo "Berechneter IMAGE_TAG_BRANCH '$IMAGE_TAG_BRANCH'"
+          
+          cd src/
+          docker build -t "$IMAGE_TAG_COMMIT" .
+          
+          echo "Docker Build erfolgreich. Lokale Images vor dem Tagging:"
+          docker images
+          
+          docker tag "$IMAGE_TAG_COMMIT" "$IMAGE_TAG_BRANCH"
+          
+          # Optional: latest Tag für Main Branch
+          if [ "$BRANCH_NAME" == "main" ]; then
+            docker tag "$IMAGE_TAG_COMMIT" "$DOCKER_HUB_REPO:latest"
+          fi
+
+      - name: Push Images
+        run: |
+          docker push "$IMAGE_TAG_COMMIT"
+          docker push "$IMAGE_TAG_BRANCH"
+          
+          if [ "$BRANCH_NAME" == "main" ]; then
+            docker push "$DOCKER_HUB_REPO:latest"
+          else
+            echo "Branch ist nicht 'main', 'latest' wird nicht gepusht"
+          fi
+          echo "Alle Push-Operationen abgeschlossen"
